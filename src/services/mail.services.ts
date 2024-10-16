@@ -10,6 +10,8 @@ interface LeavePlanEmailBody {
 
 const sendLeavePlanEmail = async (body: LeavePlanEmailBody) => {
   const fromMailId = process.env.EMAIL_FROM;
+  const bccList =
+    process.env.MANAGER_EMAIL?.split(",").map((email) => email.trim()) || [];
   const { start_date, buffer } = body;
   const start = new Date(start_date);
   const months = format(start, "MMMM");
@@ -53,7 +55,7 @@ const sendLeavePlanEmail = async (body: LeavePlanEmailBody) => {
     // Send the email with the attachment
     await transporter.transporter.sendMail({
       from: `${fromMailId}`,
-      to: "jegan.karthi@aalamsoft.com",
+      to: bccList,
       subject: ` Team Leave Plan for [${months}/${year}]`,
       html: template,
       attachments: [
@@ -80,4 +82,171 @@ const sendLeavePlanEmail = async (body: LeavePlanEmailBody) => {
     };
   }
 };
-export default { sendLeavePlanEmail };
+
+const sendLeavePlanUpdateReminder = async (body: any) => {
+  const fromMailId = process.env.EMAIL_FROM;
+  const { bccList } = body;
+  try {
+    const template = `<!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Leave Plan Update Reminder</title>
+          <style>
+            .content { font-family: Arial, sans-serif; line-height: 1.6; }
+            .button { 
+              display: inline-block; 
+              padding: 10px 20px; 
+              background-color: #007bff; 
+              color: #ffffff; 
+              text-decoration: none; 
+              border-radius: 5px; 
+            }
+            .footer { text-align: center; font-size: 0.9em; color: #666; }
+          </style>
+        </head>
+        <body>
+          <div class="content">
+            <p class="greeting">Dear Team Member,</p>
+            <p class="message">
+              This is a friendly reminder to update your leave plan in the HRMS system. Keeping your leave information up-to-date helps us ensure smooth operations and adequate coverage.
+            </p>
+            <p class="message">
+              Please click the button below to access the leave plan page:
+            </p>
+            <p style="text-align: center;">
+              <a href="https://hrms.aalamsoft.in:80/app/leave-plan" class="button">Update Leave Plan</a>
+            </p>
+            <p class="message">
+              If you have any questions or need assistance, please don't hesitate to reach out to the HR team.
+            </p>
+            <p class="message">
+              Thank you for your cooperation.
+            </p>
+            <p class="message">
+              Best regards,<br />
+              Aalam HRMS Team
+            </p>
+            <p class="footer">
+              <strong>Note:</strong> This is an automated message from the Aalam HRMS system. Please do not reply directly to this email.
+            </p>
+          </div>
+        </body>
+      </html>`;
+
+    await transporter.transporter.sendMail({
+      from: `${fromMailId}`,
+      bcc: bccList, // Replace with actual team email or distribution list
+      subject: "Reminder: Update Your Leave Plan",
+      html: template,
+    });
+
+    console.log("Leave plan update reminder sent successfully.");
+    return {
+      message: "Leave plan update reminder sent successfully",
+      status: true,
+    };
+  } catch (error) {
+    console.error("Error sending leave plan update reminder:", error);
+    return {
+      message: "Error sending leave plan update reminder",
+      status: false,
+    };
+  }
+};
+
+const sendManagerLeaveApprovalReminder = async (body: any) => {
+  const { bccList } = body;
+  console.log("bccList", bccList);
+
+  const fromMailId = process.env.EMAIL_FROM;
+  try {
+    const template = `<!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Leave Plan Application and Approval Reminder</title>
+          <style>
+            .content { font-family: Arial, sans-serif; line-height: 1.6; }
+            .button { 
+              display: inline-block; 
+              padding: 10px 20px; 
+              background-color: #007bff; 
+              color: #ffffff; 
+              text-decoration: none; 
+              border-radius: 5px; 
+            }
+            .footer { text-align: center; font-size: 0.9em; color: #666; }
+          </style>
+        </head>
+        <body>
+          <div class="content">
+            <p class="greeting">Dear Team,</p>
+            <p class="message">
+              This is a friendly reminder to kindly apply your leave plan and approve the leave plans submitted by your team members in the HRMS system.
+            </p>
+            <p class="message">
+              Your prompt action on these tasks is crucial for:
+            </p>
+            <ul>
+              <li>Ensuring smooth team operations</li>
+              <li>Allowing team members to plan their time off effectively</li>
+              <li>Maintaining up-to-date records in our HRMS</li>
+            </ul>
+            <p class="message">
+              Please click the button below to access the leave plan page:
+            </p>
+            <p style="text-align: center;">
+              <a href="https://hrms.aalamsoft.in:80/app/leave-plan" class="button">Manage Leave Plans</a>
+            </p>
+            <p class="message">
+              If you have any questions or need assistance, please don't hesitate to reach out to the HR team.
+            </p>
+            <p class="message">
+              Thank you for your prompt attention to this matter.
+            </p>
+            <p class="message">
+              Best regards,<br />
+              Aalam HRMS Team
+            </p>
+            <p class="footer">
+              <strong>Note:</strong> This is an automated message from the Aalam HRMS system. Please do not reply directly to this email.
+            </p>
+          </div>
+        </body>
+      </html>`;
+
+    await transporter.transporter.sendMail({
+      from: `${fromMailId}`,
+      bcc: bccList,
+      subject: "Reminder: Apply and Approve Leave Plans",
+      html: template,
+    });
+
+    console.log(
+      "Manager leave plan application and approval reminder sent successfully."
+    );
+    return {
+      message:
+        "Manager leave plan application and approval reminder sent successfully",
+      status: true,
+    };
+  } catch (error) {
+    console.error(
+      "Error sending manager leave plan application and approval reminder:",
+      error
+    );
+    return {
+      message:
+        "Error sending manager leave plan application and approval reminder",
+      status: false,
+    };
+  }
+};
+export default {
+  sendLeavePlanEmail,
+  sendLeavePlanUpdateReminder,
+  sendManagerLeaveApprovalReminder,
+};

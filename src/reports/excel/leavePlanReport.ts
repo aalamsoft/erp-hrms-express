@@ -4,8 +4,7 @@ import { Buffer } from "buffer";
 import * as fs from "fs";
 import * as path from "path";
 import mailServices from "../../services/mail.services";
-import { getSharePointAccessToken } from "../../utils/sharepointAccess";
-import SharePointService, * as uploadService from "../../utils/sharepointUpload";
+
 export interface Leave {
   employee: string;
   aalam_id: string;
@@ -23,6 +22,56 @@ export interface Employee {
 }
 
 class ExcelService {
+  private static readonly TITLE_STYLE: Partial<ExcelJS.Style> = {
+    font: {
+      name: "Calibri",
+      size: 16,
+      bold: true,
+      color: { argb: "FF000000" },
+    },
+    alignment: { vertical: "middle", horizontal: "center" },
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } },
+  };
+
+  private static readonly SUBTITLE_STYLE: Partial<ExcelJS.Style> = {
+    font: {
+      name: "Calibri",
+      size: 14,
+      bold: true,
+      color: { argb: "FF000000" },
+    },
+    alignment: { vertical: "middle", horizontal: "center" },
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFE9EDF5" } },
+  };
+
+  private static readonly HEADER_STYLE: Partial<ExcelJS.Style> = {
+    font: {
+      name: "Calibri",
+      size: 12,
+      bold: true,
+      color: { argb: "FFFFFFFF" },
+    },
+    alignment: { vertical: "middle", horizontal: "center" },
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF4472C4" } },
+    border: {
+      top: { style: "thin", color: { argb: "FF000000" } },
+      left: { style: "thin", color: { argb: "FF000000" } },
+      bottom: { style: "thin", color: { argb: "FF000000" } },
+      right: { style: "thin", color: { argb: "FF000000" } },
+    },
+  };
+
+  private static readonly CELL_STYLE: Partial<ExcelJS.Style> = {
+    font: { name: "Calibri", size: 11 },
+    alignment: { vertical: "middle", horizontal: "center" },
+    border: {
+      top: { style: "thin", color: { argb: "FF000000" } },
+      left: { style: "thin", color: { argb: "FF000000" } },
+      bottom: { style: "thin", color: { argb: "FF000000" } },
+      right: { style: "thin", color: { argb: "FF000000" } },
+    },
+  };
+
   private generateDateSeries(start: string, end: string): string[] {
     const startDate = new Date(start);
     const endDate = new Date(end);
@@ -35,322 +84,168 @@ class ExcelService {
     return dateArray;
   }
 
-  private generateCellStyle(leaveType: string): ExcelJS.Style {
-    const baseStyle: ExcelJS.Style = {
-      numFmt: "General",
-      font: {
-        name: "Arial",
-        size: 10,
-        bold: false,
-        italic: false,
-        underline: false,
-        color: { argb: "FF000000" },
-      },
-      alignment: {
-        vertical: "middle",
-        horizontal: "center",
-      },
-      protection: { locked: false },
-      border: {
-        top: { style: "thin", color: { argb: "FF000000" } },
-        left: { style: "thin", color: { argb: "FF000000" } },
-        bottom: { style: "thin", color: { argb: "FF000000" } },
-        right: { style: "thin", color: { argb: "FF000000" } },
-      },
-      fill: { type: "pattern", pattern: "none" },
+  private generateCellStyle(leaveType: string): Partial<ExcelJS.Style> {
+    const style = { ...ExcelService.CELL_STYLE };
+    const colorMap: { [key: string]: string } = {
+      WFH: "FFE2EFDA",
+      Leave: "FFFCE4D6",
+      "First Half Leave": "FFE7E6E6",
+      "Second Half Leave": "FFFFF2CC",
     };
 
-    switch (leaveType) {
-      case "WFH":
-        baseStyle.fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: "FF99FF99" },
-        };
-        break;
-      case "Leave":
-        baseStyle.fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: "FFFF9999" },
-        };
-        break;
-      case "First Half Leave":
-        baseStyle.fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: "FFCCCCFF" },
-        };
-        break;
-      case "Second Half Leave":
-        baseStyle.fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: "FFFFCC99" },
-        };
-        break;
-      default:
-        break;
+    if (leaveType in colorMap) {
+      style.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: colorMap[leaveType] },
+      };
     }
 
-    return baseStyle;
+    return style;
   }
 
-  // public async generateLeaveReport(
-  //   leaveData: Record<string, { leaves: Leave[] }>,
-  //   employeeData: Employee[],
-  //   startDate: string,
-  //   endDate: string,
-  //   baseOutputPath: string
-  // ): Promise<Buffer> {
-  //   const workbook = new ExcelJS.Workbook();
-
-  //   // Create the first sheet with all leave data
-  //   const allWorksheet = workbook.addWorksheet("All");
-
-  //   // Set headers for All sheet and style them
-  //   const headers = [
-  //     "Date",
-  //     ...(employeeData?.map((emp) => emp.employee_name) || []),
-  //     "Total WFH",
-  //     "Total Leave",
-  //     "Total WFO",
-  //   ];
-  //   const headerRow = allWorksheet.addRow(headers);
-
-  //   // Apply header style
-  //   headerRow?.eachCell((cell) => {
-  //     cell.style = {
-  //       font: {
-  //         name: "Arial",
-  //         size: 11,
-  //         bold: true,
-  //         color: { argb: "FFFFFFFF" },
-  //       },
-  //       alignment: { vertical: "middle", horizontal: "center" },
-  //       fill: {
-  //         type: "pattern",
-  //         pattern: "solid",
-  //         fgColor: { argb: "FF4F81BD" }, // Blue background
-  //       },
-  //       border: {
-  //         top: { style: "thin", color: { argb: "FF000000" } },
-  //         left: { style: "thin", color: { argb: "FF000000" } },
-  //         bottom: { style: "thin", color: { argb: "FF000000" } },
-  //         right: { style: "thin", color: { argb: "FF000000" } },
-  //       },
-  //     };
-  //   });
-
-  //   const dateSeries = this.generateDateSeries(startDate, endDate);
-  //   console.log("Date Series:", dateSeries); // Debugging line
-
-  //   // Add data rows for All sheet
-  //   dateSeries.forEach((date) => {
-  //     const rowData = [format(new Date(date), "EEEE, d MMMM, yyyy")];
-  //     let totalWFH = 0;
-  //     let totalLeave = 0;
-
-  //     employeeData?.forEach((employee) => {
-  //       const employeeLeaves = leaveData[employee.employee]?.leaves || [];
-  //       console.log(`Employee: ${employee.employee}, Leaves:`, employeeLeaves); // Debugging line
-
-  //       const leaveOnDate = employeeLeaves.find((leave) => {
-  //         const dates = this.generateDateSeries(leave.from_date, leave.to_date);
-  //         return dates.includes(date);
-  //       });
-
-  //       const leaveType = leaveOnDate ? leaveOnDate.leave_type : "";
-  //       rowData.push(leaveType || "");
-
-  //       if (leaveType === "WFH") {
-  //         totalWFH++;
-  //       } else if (
-  //         leaveType === "Leave" ||
-  //         leaveType === "First Half Leave" ||
-  //         leaveType === "Second Half Leave"
-  //       ) {
-  //         totalLeave++;
-  //       }
-  //     });
-
-  //     const totalWFO = employeeData.length - (totalWFH + totalLeave);
-  //     rowData.push(
-  //       totalWFH.toString(),
-  //       totalLeave.toString(),
-  //       totalWFO.toString()
-  //     );
-
-  //     const newRow = allWorksheet.addRow(rowData);
-
-  //     newRow.eachCell((cell, colNumber) => {
-  //       if (colNumber > 1 && colNumber <= employeeData.length + 1) {
-  //         const leaveType = rowData[colNumber - 1];
-  //         cell.style = this.generateCellStyle(leaveType);
-  //       }
-  //     });
-  //   });
-
-  //   // Create the second sheet with summary data
-  //   const summaryWorksheet = workbook.addWorksheet("HR");
-
-  //   const summaryHeaders = ["Date", "Total WFH", "Total Leave", "Total WFO"];
-  //   const summaryHeaderRow = summaryWorksheet.addRow(summaryHeaders);
-
-  //   // Apply header style to summary sheet
-  //   summaryHeaderRow.eachCell((cell) => {
-  //     cell.style = {
-  //       font: {
-  //         name: "Arial",
-  //         size: 11,
-  //         bold: true,
-  //         color: { argb: "FFFFFFFF" },
-  //       },
-  //       alignment: { vertical: "middle", horizontal: "center" },
-  //       fill: {
-  //         type: "pattern",
-  //         pattern: "solid",
-  //         fgColor: { argb: "FF4F81BD" }, // Blue background
-  //       },
-  //       border: {
-  //         top: { style: "thin", color: { argb: "FF000000" } },
-  //         left: { style: "thin", color: { argb: "FF000000" } },
-  //         bottom: { style: "thin", color: { argb: "FF000000" } },
-  //         right: { style: "thin", color: { argb: "FF000000" } },
-  //       },
-  //     };
-  //   });
-
-  //   dateSeries.forEach((date) => {
-  //     let totalWFH = 0;
-  //     let totalLeave = 0;
-
-  //     employeeData.forEach((employee) => {
-  //       const employeeLeaves = leaveData[employee.employee]?.leaves || [];
-  //       employeeLeaves.forEach((leave) => {
-  //         const dates = this.generateDateSeries(leave.from_date, leave.to_date);
-  //         if (dates.includes(date)) {
-  //           const leaveType = leave.leave_type;
-  //           if (leaveType === "WFH") {
-  //             totalWFH++;
-  //           } else if (
-  //             leaveType === "Leave" ||
-  //             leaveType === "First Half Leave" ||
-  //             leaveType === "Second Half Leave"
-  //           ) {
-  //             totalLeave++;
-  //           }
-  //         }
-  //       });
-  //     });
-
-  //     const totalWFO = employeeData.length - (totalWFH + totalLeave);
-  //     summaryWorksheet.addRow([
-  //       format(new Date(date), "EEEE, d MMMM, yyyy"),
-  //       totalWFH.toString(),
-  //       totalLeave.toString(),
-  //       totalWFO.toString(),
-  //     ]);
-  //   });
-
-  //   const arrayBuffer = await workbook.xlsx.writeBuffer();
-  //   // Convert ArrayBuffer to Node.js Buffer
-  //   const buffer = Buffer.from(arrayBuffer);
-  //   const start = new Date(startDate);
-  //   const year = start.getFullYear();
-  //   // Format the month to be abbreviated (e.g., 'Oct' for October)
-  //   const month = format(start, "MMM"); // Months are 0-indexed
-
-  //   // Create the folder structure based on year and month
-  //   const dirPath = path.join(baseOutputPath, year.toString(), month);
-
-  //   // Ensure the output directory exists
-  //   if (!fs.existsSync(dirPath)) {
-  //     fs.mkdirSync(dirPath, { recursive: true });
-  //     console.log(`Created directory: ${dirPath}`);
-  //   } else {
-  //     console.log(`Directory already exists: ${dirPath}`);
-  //   }
-  //   // Construct the full output path for the file
-  //   const outputPath = path.join(dirPath, `${month}_leave_report.xlsx`);
-  //   // Write the buffer to a file
-  //   fs.writeFileSync(outputPath, buffer);
-  //   console.log(`Excel report saved to: ${outputPath}`);
-
-  //   return buffer;
-  // }
   public async generateLeaveReport(
     leaveData: Record<string, { leaves: Leave[] }>,
     employeeData: Employee[],
     startDate: string,
     endDate: string,
     baseOutputPath: string
-  ): Promise<string> {
-    const workbook = new ExcelJS.Workbook();
+  ): Promise<Buffer | string> {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      this.createAllSheet(
+        workbook,
+        leaveData,
+        employeeData,
+        startDate,
+        endDate
+      );
+      this.createSummarySheet(
+        workbook,
+        leaveData,
+        employeeData,
+        startDate,
+        endDate
+      );
 
-    // Create the first sheet with all leave data
-    const allWorksheet = workbook.addWorksheet("All");
+      const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
+      const filePath = this.saveExcelFile(buffer, startDate, baseOutputPath);
+      return buffer;
+    } catch (error: any) {
+      console.error(`Error processing Excel report: ${error.message}`);
+      return `Failure: Could not complete report processing. Error: ${error.message}`;
+    }
+  }
 
-    // Set headers for All sheet and style them
+  private createAllSheet(
+    workbook: ExcelJS.Workbook,
+    leaveData: Record<string, { leaves: Leave[] }>,
+    employeeData: Employee[],
+    startDate: string,
+    endDate: string
+  ): void {
+    const allWorksheet = workbook.addWorksheet("All Employees");
+    const month = format(new Date(startDate), "MMMM yyyy");
+
+    this.addTitleRows(allWorksheet, month);
+
     const headers = [
       "Date",
-      ...(employeeData?.map((emp) => emp.employee_name) || []),
+      ...employeeData.map((emp) => emp.employee_name),
       "Total WFH",
       "Total Leave",
       "Total WFO",
     ];
-    const headerRow = allWorksheet.addRow(headers);
 
-    // Apply header style
-    headerRow?.eachCell((cell) => {
-      cell.style = {
-        font: {
-          name: "Arial",
-          size: 11,
-          bold: true,
-          color: { argb: "FFFFFFFF" },
-        },
-        alignment: { vertical: "middle", horizontal: "center" },
-        fill: {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: "FF4F81BD" }, // Blue background
-        },
-        border: {
-          top: { style: "thin", color: { argb: "FF000000" } },
-          left: { style: "thin", color: { argb: "FF000000" } },
-          bottom: { style: "thin", color: { argb: "FF000000" } },
-          right: { style: "thin", color: { argb: "FF000000" } },
-        },
-      };
+    this.addHeaderRow(allWorksheet, headers);
+    this.addDataRows(allWorksheet, leaveData, employeeData, startDate, endDate);
+    this.formatWorksheet(allWorksheet);
+  }
+
+  private createSummarySheet(
+    workbook: ExcelJS.Workbook,
+    leaveData: Record<string, { leaves: Leave[] }>,
+    employeeData: Employee[],
+    startDate: string,
+    endDate: string
+  ): void {
+    const summaryWorksheet = workbook.addWorksheet("Summary");
+    const month = format(new Date(startDate), "MMMM yyyy");
+
+    this.addTitleRows(summaryWorksheet, month);
+
+    const headers = ["Date", "Total WFH", "Total Leave", "Total WFO"];
+
+    this.addHeaderRow(summaryWorksheet, headers);
+    this.addSummaryRows(
+      summaryWorksheet,
+      leaveData,
+      employeeData,
+      startDate,
+      endDate
+    );
+    this.formatWorksheet(summaryWorksheet);
+  }
+
+  private addTitleRows(worksheet: ExcelJS.Worksheet, month: string): void {
+    const titleRow = worksheet.addRow([`Leave Plan for the Month of ${month}`]);
+    titleRow.height = 30;
+    titleRow.eachCell((cell) => {
+      cell.style = ExcelService.TITLE_STYLE;
     });
+    worksheet.mergeCells(
+      `A${titleRow.number}:${this.getColumnName(worksheet.columnCount)}${
+        titleRow.number
+      }`
+    );
 
+    const subtitleRow = worksheet.addRow(["Aalam Info Solutions LLP"]);
+    subtitleRow.height = 25;
+    subtitleRow.eachCell((cell) => {
+      cell.style = ExcelService.SUBTITLE_STYLE;
+    });
+    worksheet.mergeCells(
+      `A${subtitleRow.number}:${this.getColumnName(worksheet.columnCount)}${
+        subtitleRow.number
+      }`
+    );
+
+    worksheet.addRow([]); // Add an empty row for spacing
+  }
+
+  private addHeaderRow(worksheet: ExcelJS.Worksheet, headers: string[]): void {
+    const headerRow = worksheet.addRow(headers);
+    headerRow.height = 20;
+    headerRow.eachCell((cell) => {
+      cell.style = ExcelService.HEADER_STYLE;
+    });
+  }
+
+  private addDataRows(
+    worksheet: ExcelJS.Worksheet,
+    leaveData: Record<string, { leaves: Leave[] }>,
+    employeeData: Employee[],
+    startDate: string,
+    endDate: string
+  ): void {
     const dateSeries = this.generateDateSeries(startDate, endDate);
-    // Add data rows for All sheet
+
     dateSeries.forEach((date) => {
       const rowData = [format(new Date(date), "EEEE, d MMMM, yyyy")];
-      let totalWFH = 0;
-      let totalLeave = 0;
+      let totalWFH = 0,
+        totalLeave = 0;
 
-      employeeData?.forEach((employee) => {
-        const employeeLeaves = leaveData[employee.employee]?.leaves || [];
-        const leaveOnDate = employeeLeaves.find((leave) => {
-          const dates = this.generateDateSeries(leave.from_date, leave.to_date);
-          return dates.includes(date);
-        });
-
-        const leaveType = leaveOnDate ? leaveOnDate.leave_type : "";
-        rowData.push(leaveType || "");
-
-        if (leaveType === "WFH") {
-          totalWFH++;
-        } else if (
-          leaveType === "Leave" ||
-          leaveType === "First Half Leave" ||
-          leaveType === "Second Half Leave"
-        ) {
+      employeeData.forEach((employee) => {
+        const leaveType = this.getLeaveTypeForDate(
+          leaveData[employee.employee]?.leaves || [],
+          date
+        );
+        rowData.push(leaveType);
+        if (leaveType === "WFH") totalWFH++;
+        else if (
+          ["Leave", "First Half Leave", "Second Half Leave"].includes(leaveType)
+        )
           totalLeave++;
-        }
       });
 
       const totalWFO = employeeData.length - (totalWFH + totalLeave);
@@ -360,135 +255,115 @@ class ExcelService {
         totalWFO.toString()
       );
 
-      const newRow = allWorksheet.addRow(rowData);
-
-      newRow.eachCell((cell, colNumber) => {
-        if (colNumber > 1 && colNumber <= employeeData.length + 1) {
-          const leaveType = rowData[colNumber - 1];
-          cell.style = this.generateCellStyle(leaveType);
-        }
-      });
+      const newRow = worksheet.addRow(rowData);
+      this.styleDataRow(newRow, employeeData.length);
     });
+  }
 
-    // Create the second sheet with summary data
-    const summaryWorksheet = workbook.addWorksheet("HR");
-
-    const summaryHeaders = ["Date", "Total WFH", "Total Leave", "Total WFO"];
-    const summaryHeaderRow = summaryWorksheet.addRow(summaryHeaders);
-
-    // Apply header style to summary sheet
-    summaryHeaderRow.eachCell((cell) => {
-      cell.style = {
-        font: {
-          name: "Arial",
-          size: 11,
-          bold: true,
-          color: { argb: "FFFFFFFF" },
-        },
-        alignment: { vertical: "middle", horizontal: "center" },
-        fill: {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: "FF4F81BD" }, // Blue background
-        },
-        border: {
-          top: { style: "thin", color: { argb: "FF000000" } },
-          left: { style: "thin", color: { argb: "FF000000" } },
-          bottom: { style: "thin", color: { argb: "FF000000" } },
-          right: { style: "thin", color: { argb: "FF000000" } },
-        },
-      };
-    });
+  private addSummaryRows(
+    worksheet: ExcelJS.Worksheet,
+    leaveData: Record<string, { leaves: Leave[] }>,
+    employeeData: Employee[],
+    startDate: string,
+    endDate: string
+  ): void {
+    const dateSeries = this.generateDateSeries(startDate, endDate);
 
     dateSeries.forEach((date) => {
-      let totalWFH = 0;
-      let totalLeave = 0;
+      let totalWFH = 0,
+        totalLeave = 0;
 
       employeeData.forEach((employee) => {
-        const employeeLeaves = leaveData[employee.employee]?.leaves || [];
-        employeeLeaves.forEach((leave) => {
-          const dates = this.generateDateSeries(leave.from_date, leave.to_date);
-          if (dates.includes(date)) {
-            const leaveType = leave.leave_type;
-            if (leaveType === "WFH") {
-              totalWFH++;
-            } else if (
-              leaveType === "Leave" ||
-              leaveType === "First Half Leave" ||
-              leaveType === "Second Half Leave"
-            ) {
-              totalLeave++;
-            }
-          }
-        });
+        const leaveType = this.getLeaveTypeForDate(
+          leaveData[employee.employee]?.leaves || [],
+          date
+        );
+        if (leaveType === "WFH") totalWFH++;
+        else if (
+          ["Leave", "First Half Leave", "Second Half Leave"].includes(leaveType)
+        )
+          totalLeave++;
       });
 
       const totalWFO = employeeData.length - (totalWFH + totalLeave);
-      summaryWorksheet.addRow([
+      worksheet.addRow([
         format(new Date(date), "EEEE, d MMMM, yyyy"),
         totalWFH.toString(),
         totalLeave.toString(),
         totalWFO.toString(),
       ]);
     });
+  }
 
-    const arrayBuffer = await workbook.xlsx.writeBuffer();
-    // Convert ArrayBuffer to Node.js Buffer
-    const buffer = Buffer.from(arrayBuffer);
+  private getLeaveTypeForDate(leaves: Leave[], date: string): string {
+    return (
+      leaves.find((leave) =>
+        this.generateDateSeries(leave.from_date, leave.to_date).includes(date)
+      )?.leave_type || ""
+    );
+  }
+
+  private styleDataRow(row: ExcelJS.Row, employeeCount: number): void {
+    row.eachCell((cell, colNumber) => {
+      if (colNumber > 1 && colNumber <= employeeCount + 1) {
+        cell.style = this.generateCellStyle(cell.value as string);
+      } else {
+        cell.style = ExcelService.CELL_STYLE;
+      }
+    });
+  }
+
+  private formatWorksheet(worksheet: ExcelJS.Worksheet): void {
+    worksheet.columns.forEach((column, index) => {
+      if (index === 0) {
+        column.width = 30; // Date column
+      } else {
+        column.width = 15;
+      }
+    });
+
+    // Add borders to all cells
+    worksheet.eachRow((row, rowNumber) => {
+      row.eachCell((cell) => {
+        if (rowNumber > 3) {
+          // Skip title and subtitle rows
+          cell.border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+        }
+      });
+    });
+  }
+
+  private getColumnName(index: number): string {
+    let columnName = "";
+    while (index > 0) {
+      index--;
+      columnName = String.fromCharCode(65 + (index % 26)) + columnName;
+      index = Math.floor(index / 26);
+    }
+    return columnName;
+  }
+
+  private saveExcelFile(
+    buffer: Buffer,
+    startDate: string,
+    baseOutputPath: string
+  ): string {
     const start = new Date(startDate);
     const year = start.getFullYear();
-    // Format the month to be abbreviated (e.g., 'Oct' for October)
-    const month = format(start, "MMM"); // Months are 0-indexed
-
-    // Create the folder structure based on year and month
+    const month = format(start, "MMM");
     const dirPath = path.join(baseOutputPath, year.toString(), month);
 
-    // Ensure the output directory exists
-    try {
-      if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
-        console.log(`Created directory: ${dirPath}`);
-      } else {
-        console.log(`Directory already exists: ${dirPath}`);
-      }
+    fs.mkdirSync(dirPath, { recursive: true });
+    const filePath = path.join(dirPath, `${month}_leave_report.xlsx`);
+    fs.writeFileSync(filePath, buffer);
+    console.log(`Excel report saved to: ${filePath}`);
 
-      // Construct the full output path for the file
-      const outputPath = path.join(dirPath, `${month}_leave_report.xlsx`);
-
-      // Write the buffer to a file
-      fs.writeFileSync(outputPath, buffer);
-      console.log(`Excel report saved to: ${outputPath}`);
-      // const emailObject = {
-      //   start_date: start,
-      //   buffer: buffer,
-      // };
-      // mailServices.sendLeavePlanEmail(emailObject);
-      const sharePointService = new SharePointService();
-      const siteId = "AalamInfoSolutinonsLLP"; // Change this to your SharePoint site ID
-      const filePath = buffer;
-      const fileName = `${month}_leave_report.xlsx`;
-      try {
-        // Fetch access token
-        const sharePointUploadResult = await sharePointService.uploadFile(
-          outputPath,
-          fileName,
-          siteId
-        );
-
-        console.log(
-          `File uploaded to SharePoint successfully: ${sharePointUploadResult}`
-        );
-        return "Success: Excel report generated successfully."; // Return result or path to the uploaded file
-      } catch (error) {
-        console.error("Error uploading file to SharePoint:", error);
-        throw new Error("Upload failed");
-      }
-      // const email = await mailServices.sendLeavePlanEmail(emailObject);
-      return "Success: Excel report generated successfully.";
-    } catch (error: any) {
-      console.error(`Error saving Excel report: ${error.message}`);
-      return `Failure: Could not generate the report. Error: ${error.message}`;
-    }
+    return filePath;
   }
 }
 

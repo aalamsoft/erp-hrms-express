@@ -1,86 +1,79 @@
-// src/services/SharePointService.ts
-
-import { ConfidentialClientApplication } from "@azure/msal-node";
-import axios from "axios";
-import fs from "fs";
-import path from "path";
+import { ClientSecretCredential } from "@azure/identity";
+import { Client } from "@microsoft/microsoft-graph-client";
+import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
 
 class SharePointService {
-  private clientId: string;
-  private clientSecret: string;
-  private tenantId: string;
-  private msalClient: ConfidentialClientApplication;
-  private graphApiUrl: string;
+  private client: Client;
 
   constructor() {
-    this.clientId = process.env.CLIENT_ID as string;
-    this.clientSecret = process.env.CLIENT_SECRET as string;
-    this.tenantId = process.env.TENANT_ID as string;
-    this.graphApiUrl = process.env.SHAREPOINT_URL as string;
+    const credential = new ClientSecretCredential(
+      process.env.TENANT_ID!,
+      process.env.CLIENT_ID!,
+      process.env.CLIENT_SECRET!
+    );
+    console.log("credential", credential);
+    const authProvider = new TokenCredentialAuthenticationProvider(credential, {
+      scopes: ["https://graph.microsoft.com/.default"],
+    });
+    console.log("authProvider", authProvider);
 
-    this.msalClient = new ConfidentialClientApplication({
-      auth: {
-        clientId: this.clientId,
-        authority: `https://login.microsoftonline.com/${this.tenantId}`,
-        clientSecret: "NZgXaezmD4Nz3NAj3i8aNjdZjz3YExeTTMX0FwxpQGg=",
-      },
+    this.client = Client.initWithMiddleware({
+      authProvider: authProvider,
     });
   }
 
-  // Function to get an access token
-  private async getAccessToken(): Promise<string> {
-    const response: any = await this.msalClient.acquireTokenByClientCredential({
-      scopes: [`${this.graphApiUrl}/.default`],
-    });
-    return response.accessToken!;
-  }
-  // Function to get site ID by site name
-  public async getSiteIdByName(siteName: string): Promise<string> {
-    const accessToken = await this.getAccessToken();
-    console.log("siteName", siteName);
-    const url = `${this.graphApiUrl}/sites?search=${encodeURIComponent(
-      siteName
-    )}`;
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-    console.log("getSiteIdByName", response);
+  async uploadFile(
+    fileBuffer: Buffer,
+    fileName: string,
+    folderPath: string
+  ): Promise<any> {
+    try {
+      // Get the SharePoint site ID
+      const site = await this.client.api("/sites/root").get();
 
-    // Check if any sites were found
-    if (response.data.value.length > 0) {
-      return response.data.value[0].id; // Return the first site ID found
-    } else {
-      throw new Error(`Site with name "${siteName}" not found.`);
+      // Ensure the folder exists
+      await this.ensureFolderExists(site.id, folderPath);
+
+      // Upload the file
+      const driveItem = await this.client
+        .api(`/sites/${site.id}/drive/root:/${folderPath}/${fileName}:/content`)
+        .put(fileBuffer);
+
+      return driveItem;
+    } catch (error) {
+      console.error("Error uploading file to SharePoint:", error);
+      throw error;
     }
   }
-  // Function to upload a file to SharePoint
-  public async uploadFile(
-    filePath: string,
-    fileName: string,
-    siteId: string
-  ): Promise<string> {
-    const accessToken = await this.getAccessToken();
-    console.log("accessToken", accessToken);
-    const siteName = await this.getSiteIdByName(siteId);
-    console.log("siteName", siteName);
 
-    // Prepare the upload URL
-    const uploadUrl = `${this.graphApiUrl}/sites/${siteId}/drive/root:/${fileName}:/content`;
+  private async ensureFolderExists(
+    siteId: string,
+    folderPath: string
+  ): Promise<void> {
+    const folders = folderPath.split("/").filter(Boolean);
+    let currentPath = "";
 
-    const fileStream = fs.createReadStream(filePath);
-
-    // Upload the file
-    const response = await axios.put(uploadUrl, fileStream, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/octet-stream",
-      },
-    });
-
-    // Return the file's web URL
-    return response.data.webUrl;
+    for (const folder of folders) {
+      currentPath += `/${folder}`;
+      try {
+        await this.client
+          .api(`/sites/${siteId}/drive/root:${currentPath}`)
+          .get();
+      } catch (error: any) {
+        if (error.statusCode === 404) {
+          // Folder doesn't exist, create it
+          // Folder doesn't exist, create it
+          await this.client
+            .api(`/sites/${siteId}/drive/root:${currentPath}`)
+            .post({
+              name: folder,
+              folder: {},
+            });
+        } else {
+          throw error;
+        }
+      }
+    }
   }
 }
 

@@ -12,5 +12,23 @@ const leavePlanMail = catchAsync(async (req, res) => {
     handleError(new ErrorHandler(errorText, methodName, err), res);
   }
 });
+const leavePlanUpdateReminder = catchAsync(async (req, res) => {
+  const methodName = "/leavePlanUpdateReminder";
+  try {
+    const email = await mailService.sendLeavePlanUpdateReminder(req.body);
+    res.send(email);
+  } catch (err: any) {
+    handleError(new ErrorHandler(errorText, methodName, err), res);
+  }
+});
+const managerLeaveApprovalReminder = catchAsync(async (req, res) => {
+  const methodName = "/managerLeaveApprovalReminder";
+  try {
+    const email = await mailService.sendManagerLeaveApprovalReminder(req.body);
+    res.send(email);
+  } catch (err: any) {
+    handleError(new ErrorHandler(errorText, methodName, err), res);
+  }
+});
 
-export { leavePlanMail };
+export { leavePlanMail, leavePlanUpdateReminder, managerLeaveApprovalReminder };

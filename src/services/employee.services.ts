@@ -17,7 +17,6 @@ const employeeList = async () => {
       "department",
     ]), // Specify the fields to fetch from Attendance
     filters: JSON.stringify([
-      // ["attendance_date", "between", [body?.startDate, body?.endDate]], // Filter attendance_date between startDate and endDate
       ["status", "in", ["Active"]],
       [
         "department",

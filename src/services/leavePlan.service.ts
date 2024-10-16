@@ -1,6 +1,9 @@
 import axios from "axios";
 import * as employeeService from "./employee.services";
 import ExcelService from "../reports/excel/leavePlanReport";
+import mailServices from "./mail.services";
+import { format } from "date-fns";
+import sharePointUploadService from "../utils/sharepointUpload";
 const excelService = new ExcelService();
 interface Employee {
   employee: string;
@@ -55,12 +58,30 @@ const getLeavePlan = async (body: any) => {
 const getLeaveReport = async (body: any) => {
   try {
     const { startDate, endDate } = body;
-    const baseOutputPath = "D:/Jegan/aalam-hrms/erp-hrms-express/uploads/";
+    const baseOutputPath = "./uploads/";
+    // Fetch leave plan data
     const leavePlan = await getLeavePlan(body);
-    const employeedata = await employeeService.employeeList();
-    const employeeList: Employee[] = employeedata?.data?.data;
-    const pivotData: PivotData = leavePlan ? getPivotData(leavePlan) : {};
-    const generateExcel = await excelService.generateLeaveReport(
+    if (!leavePlan || leavePlan.length === 0) {
+      return {
+        status: false,
+        message: "No leave plan data found for the specified date range.",
+      };
+    }
+    // Fetch employee data
+    const employeeData = await employeeService.employeeList();
+    if (!employeeData?.data?.data) {
+      return {
+        status: false,
+        message: "Failed to fetch employee data.",
+      };
+    }
+    const employeeList: Employee[] = employeeData.data.data;
+
+    // Generate pivot data
+    const pivotData: PivotData = getPivotData(leavePlan);
+
+    // Generate Excel report
+    const excelBuffer = await excelService.generateLeaveReport(
       pivotData,
       employeeList,
       startDate,
@@ -68,14 +89,43 @@ const getLeaveReport = async (body: any) => {
       baseOutputPath
     );
 
+    if (!excelBuffer) {
+      return {
+        status: false,
+        message: "Failed to generate Excel report.",
+      };
+    }
+
+    // Send email
+    try {
+      await mailServices.sendLeavePlanEmail({
+        start_date: new Date(startDate),
+        buffer: excelBuffer,
+      });
+    } catch (emailError) {
+      console.error("Error sending email:", emailError);
+      // Continue execution even if email fails
+    }
+
+    // Upload to SharePoint (if needed)
+    // try {
+    //   await sharePointUploadService.uploadFile(excelBuffer, "LeavePlanReport.xlsx");
+    // } catch (uploadError) {
+    //   console.error("Error uploading to SharePoint:", uploadError);
+    //   // Continue execution even if upload fails
+    // }
+
     return {
       status: true,
-      message: "Leave Plan report ",
-      data: pivotData,
+      message: "Leave Plan report generated successfully",
+      // data: excelBuffer,
     };
   } catch (error) {
-    console.error("Error fetching getLeavePlan details:", error);
-    throw error;
+    console.error("Error in getLeaveReport:", error);
+    return {
+      status: false,
+      message: "An error occurred while generating the Leave Plan report.",
+    };
   }
 };
 

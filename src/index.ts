@@ -5,12 +5,18 @@ import bodyParser from "body-parser";
 import routes from "./routes";
 import cors from "cors";
 import { createServer } from "http";
-import * as leavePlanService from "../src/services/leavePlan.service";
-const nodeCron = require("node-cron");
+import {
+  setupLeavePlanUpdateReminderScheduler,
+  setupLeaveReportScheduler,
+  setupManagerLeaveApprovalReminderScheduler,
+} from "./schedulers/leaveReportScheduler";
 const host = process.env.API_HOST ?? "localhost";
 const port = process.env.API_PORT ? Number(process.env.API_PORT) : 3000;
-const statexFrontEndURL = process.env.NEXT_APP_URL;
 let LEAVEPLANREPORT_CRON_JOB = process.env.LEAVEPLANREPORT_CRON_JOB;
+const MANAGER_LEAVE_APPROVAL_REMINDER_CRON_JOB =
+  process.env.MANAGER_LEAVE_APPROVAL_REMINDER_CRON_JOB;
+const LEAVE_PLAN_UPDATE_REMINDER_CRON_JOB =
+  process.env.LEAVE_PLAN_UPDATE_REMINDER_CRON_JOB;
 
 const app = express();
 
@@ -44,19 +50,19 @@ app.use("/api", routes);
 
 const httpServer = createServer(app);
 
-nodeCron.schedule(`${LEAVEPLANREPORT_CRON_JOB}`, async function () {
-  try {
-    if (process.env.LEAVEPLAN_SCHEDULER === "2") {
-      const object = {
-        startDate: "2024-10-01",
-        endDate: "2024-10-31",
-      };
-      const generateLeaveReport = await leavePlanService.getLeaveReport(object);
-    }
-  } catch (error) {
-    console.log("err in LEAVEPLANREPORT_CRON_JOB mail", error);
-  }
-});
+if (LEAVEPLANREPORT_CRON_JOB) {
+  setupLeaveReportScheduler(LEAVEPLANREPORT_CRON_JOB);
+}
+
+if (MANAGER_LEAVE_APPROVAL_REMINDER_CRON_JOB) {
+  setupManagerLeaveApprovalReminderScheduler(
+    MANAGER_LEAVE_APPROVAL_REMINDER_CRON_JOB
+  );
+}
+
+if (LEAVE_PLAN_UPDATE_REMINDER_CRON_JOB) {
+  setupLeavePlanUpdateReminderScheduler(LEAVE_PLAN_UPDATE_REMINDER_CRON_JOB);
+}
 httpServer.listen(port, host, () => {
   console.log(`ERP hrms API App Listening on Port http://${host}:${port}`);
 });

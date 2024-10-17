@@ -6,7 +6,7 @@ const nodeCron = require("node-cron");
 export function setupLeaveReportScheduler(cronExpression: string) {
   nodeCron.schedule(cronExpression, async function () {
     try {
-      if (process.env.LEAVEPLAN_SCHEDULER === "0") {
+      if (process.env.LEAVEPLAN_SCHEDULER === "1") {
         const currentDate = new Date();
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
@@ -53,7 +53,7 @@ export function setupManagerLeaveApprovalReminderScheduler(
 ) {
   nodeCron.schedule(cronExpression, async function () {
     try {
-      if (process.env.MANAGER_LEAVE_APPROVAL_REMINDER_SCHEDULER === "0") {
+      if (process.env.MANAGER_LEAVE_APPROVAL_REMINDER_SCHEDULER === "1") {
         const bccList =
           process.env.GROUP_EMAIL?.split(",").map((email) => email.trim()) ||
           [];
@@ -81,7 +81,7 @@ export function setupManagerLeaveApprovalReminderScheduler(
 export function setupLeavePlanUpdateReminderScheduler(cronExpression: string) {
   nodeCron.schedule(cronExpression, async function () {
     try {
-      if (process.env.LEAVE_PLAN_UPDATE_REMINDER_SCHEDULER === "0") {
+      if (process.env.LEAVE_PLAN_UPDATE_REMINDER_SCHEDULER === "1") {
         const bccList =
           process.env.GROUP_EMAIL?.split(",").map((email) => email.trim()) ||
           [];

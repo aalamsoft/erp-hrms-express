@@ -4,6 +4,7 @@ import ExcelService from "../reports/excel/leavePlanReport";
 import mailServices from "./mail.services";
 import { format } from "date-fns";
 import sharePointUploadService from "../utils/sharepointUpload";
+import SharePointService from "../utils/sharepointUpload";
 const excelService = new ExcelService();
 interface Employee {
   employee: string;
@@ -107,13 +108,37 @@ const getLeaveReport = async (body: any) => {
       // Continue execution even if email fails
     }
 
-    // Upload to SharePoint (if needed)
-    // try {
-    //   await sharePointUploadService.uploadFile(excelBuffer, "LeavePlanReport.xlsx");
-    // } catch (uploadError) {
-    //   console.error("Error uploading to SharePoint:", uploadError);
-    //   // Continue execution even if upload fails
-    // }
+    // Upload to SharePoint
+
+    try {
+      const sharePointService = new SharePointService(); // Instantiate the SharePointService
+      const fileName = `LeavePlanReport_${format(
+        new Date(startDate),
+        "MMM"
+      )}.xlsx`;
+      const year = new Date(startDate).getFullYear().toString();
+      console.log("year", year);
+
+      const uploadResult = await sharePointService.uploadFile(
+        excelBuffer as Buffer,
+        fileName, // Add the appropriate SharePoint folder path here
+        `/aalam_leave_plan/2024`
+      );
+      if (uploadResult.status) {
+        console.log(
+          "Successfully uploaded report to SharePoint:",
+          uploadResult.message
+        );
+      } else {
+        console.error(
+          "Failed to upload report to SharePoint:",
+          uploadResult.message
+        );
+      }
+    } catch (uploadError) {
+      console.error("Error uploading to SharePoint:", uploadError);
+      // Continue execution even if upload fails
+    }
 
     return {
       status: true,

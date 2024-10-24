@@ -56,11 +56,12 @@ const sendLeavePlanEmail = async (body: LeavePlanEmailBody) => {
     await transporter.transporter.sendMail({
       from: `${fromMailId}`,
       to: bccList,
+      bcc: process.env.CC_MANGER_EMAIL,
       subject: ` Team Leave Plan for [${months}/${year}]`,
       html: template,
       attachments: [
         {
-          filename: "Oct_leave_report.xlsx",
+          filename: `${months}_leave_report.xlsx`,
           //   path: filePath, // Path to the file attachment
           content: buffer,
           contentType:

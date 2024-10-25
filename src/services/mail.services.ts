@@ -138,7 +138,7 @@ const sendLeavePlanUpdateReminder = async (body: any) => {
 
     await transporter.transporter.sendMail({
       from: `${fromMailId}`,
-      bcc: bccList, // Replace with actual team email or distribution list
+      bcc: process.env.CC_MANGER_EMAIL, // Replace with actual team email or distribution list
       subject: "Reminder: Update Your Leave Plan",
       html: template,
     });
